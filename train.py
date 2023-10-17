@@ -34,7 +34,8 @@ class Trainer:
 
         for epoch in range(self.epochs): # Epoch loop
             trainiter = iter(trainloader)
-            for i in range(len(trainloader) // self.batch_logging_freq): # Logging loop
+            k = len(trainloader) // self.batch_logging_freq
+            for i in range(k): # Logging loop
                 self.model.train()
                 epoch_train_loss = self.train_loop(trainiter)
                 self.training_loss.append(epoch_train_loss)
@@ -43,7 +44,7 @@ class Trainer:
                 epoch_valid_loss = self.evaluate_model(validloader)
                 self.validation_loss.append(epoch_valid_loss)
 
-                n = epoch*self.batch_logging_freq + i
+                n = epoch*k + i
                 stop, saved = self.early_stopping(epoch_valid_loss, n)
 
                 if n > 0:
