@@ -55,6 +55,7 @@ class Trainer:
                 if saved:
                     print("New valid loss record, model saved!")
                 if stop:
+                    display.clear_output(wait=True)
                     print("Early stopped at epoch", epoch)
                     break
             if stop:
