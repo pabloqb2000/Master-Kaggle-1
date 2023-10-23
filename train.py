@@ -2,8 +2,7 @@ import numpy as np
 from IPython import display
 import matplotlib.pyplot as plt
 import torch
-from torch import nn
-from torch import optim
+from time import time
 
 class Trainer:
     def __init__(self, model, epochs, criterion, optim, lr, stopping_batches,
@@ -32,48 +31,66 @@ class Trainer:
         if self.batch_logging_freq == None:
             self.batch_logging_freq = len(trainloader)
 
-        for epoch in range(self.epochs): # Epoch loop
-            trainiter = iter(trainloader)
-            k = len(trainloader) // self.batch_logging_freq
-            for i in range(k): # Logging loop
-                self.model.train()
-                epoch_train_loss = self.train_loop(trainiter)
-                self.training_loss.append(epoch_train_loss)
+        t0 = t = time()
+        try:
+            for epoch in range(self.epochs): # Epoch loop
+                trainiter = iter(trainloader)
+                k = len(trainloader) // self.batch_logging_freq
+                for i in range(k): # Logging loop
+                    self.model.train()
+                    epoch_train_loss = self.train_loop(trainiter)
+                    self.training_loss.append(epoch_train_loss)
 
-                self.model.eval()
-                epoch_valid_loss = self.evaluate_model(validloader)
-                self.validation_loss.append(epoch_valid_loss)
+                    self.model.eval()
+                    epoch_valid_loss = self.evaluate_model(validloader)
+                    self.validation_loss.append(epoch_valid_loss)
 
-                n = epoch*k + i
-                stop, saved = self.early_stopping(epoch_valid_loss, n)
+                    n = epoch*k + i
+                    stop, saved = self.early_stopping(epoch_valid_loss, n)
 
-                if n > 0:
-                    self.plot_losses(epoch, n) # This line clears the display all printing should go after this
-                print(f"Epoch train loss: {epoch_train_loss}")
-                print(f"Epoch valid loss: {epoch_valid_loss}")
+                    if n > 0:
+                        # This line clears the display, all printing should go after this
+                        self.plot_losses(epoch, n, k)
+                    print(f"Epoch train loss: {epoch_train_loss}")
+                    print(f"Epoch valid loss: {epoch_valid_loss}")
+                    print(f"{self.batch_logging_freq} batches train time: {time() - t} s")
+                    t = time()
 
-                if saved:
-                    print("New valid loss record, model saved!")
+                    if saved:
+                        print("New valid loss record, model saved!")
+                    if stop:
+                        display.clear_output(wait=True)
+                        print("Early stopped at epoch,", epoch)
+                        break
                 if stop:
-                    display.clear_output(wait=True)
-                    print("Early stopped at epoch", epoch)
                     break
-            if stop:
-                break
+        except KeyboardInterrupt:
+            display.clear_output(wait=True)
+            print("Training interrupted at epoch:", epoch)
+            stop = True
+        finally:
+            if not stop:
+                display.clear_output(wait=True)
 
-        # Retrieve best model weights
-        state_dict = torch.load('best.pth')
-        self.model.load_state_dict(state_dict)
+            # Retrieve best model weights
+            state_dict = torch.load('best.pth')
+            self.model.load_state_dict(state_dict)
 
-    def plot_losses(self, epoch, n):
-        x = np.arange(n+1) / self.batch_logging_freq
+            plt.show()
+            print("Loaded best model weights!")
+            print(f"Total training time: {time() - t0} s")
+            print(f"Final train loss: {epoch_train_loss}")
+            print(f"Final valid loss: {epoch_valid_loss}")
+
+    def plot_losses(self, epoch, n, k):
+        x = np.arange(n+1) / k
         plt.clf()
         plt.title(f"Loss up to epoch: {epoch+1}/{self.epochs}")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.plot(x, self.training_loss, label='Training Loss')
         plt.plot(x, self.validation_loss, label='Validation Loss')
-        plt.axvline(self.model_saved_batch / self.batch_logging_freq,
+        plt.axvline(self.model_saved_batch / k,
                     ls=':', lw=0.5, color='grey', label = 'Saved model')
         plt.legend()
         display.clear_output(wait=True)
@@ -86,22 +103,11 @@ class Trainer:
             x, y = x.to(self.device), y.to(self.device)
             self.optim.zero_grad()
             out = self.model.forward(x.view(x.shape[0], -1))
-            loss = self.criterion(out, y)
+            loss = self.criterion(out, y.view(y.shape[0], -1))
             running_loss += loss.item()
             loss.backward()
             self.optim.step()
         return running_loss / self.batch_logging_freq
-
-    def evaluate_model(self, validloader):
-        epoch_valid_loss = 0.
-
-        with torch.no_grad():
-            for x, y in validloader:
-                x, y = x.to(self.device), y.to(self.device)
-                out = self.model.forward(x.view(x.shape[0], -1))
-                loss = self.criterion(out, y)
-                epoch_valid_loss += loss.item()
-        return epoch_valid_loss / len(validloader)
 
     def early_stopping(self, valid_loss, n):
           saved = False
@@ -117,3 +123,14 @@ class Trainer:
           if self.epochs_since_loss_record > self.stopping_batches:
               return True, saved
           return False, saved
+
+    def evaluate_model(self, validloader):
+        epoch_valid_loss = 0.
+
+        with torch.no_grad():
+            for x, y in validloader:
+                x, y = x.to(self.device), y.to(self.device)
+                out = self.model.forward(x.view(x.shape[0], -1))
+                loss = self.criterion(out, y.view(y.shape[0], -1))
+                epoch_valid_loss += loss.item()
+        return epoch_valid_loss / len(validloader)
