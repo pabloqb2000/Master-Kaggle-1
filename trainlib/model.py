@@ -10,7 +10,7 @@ class TransformerModel(nn.Module):
         https://pytorch.org/tutorials/beginner/transformer_tutorial.html
     """
 
-    def __init__(self, ntoken, d_model, nhead, d_hid, nlayers, d_output, dropout=0.5):
+    def __init__(self, ntoken, d_model, nhead, d_hid, nlayers, d_output, dropout=0.5, use_cuda=True):
         super().__init__()
         self.model_type = 'Transformer'
         self.n_token = ntoken
@@ -20,8 +20,14 @@ class TransformerModel(nn.Module):
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.embedding = nn.Embedding(ntoken, d_model)
         self.linear = nn.Linear(d_model, d_output)
-
+        
         self.init_weights()
+        
+        if not torch.cuda.is_available() and use_cuda:
+            print("Cuda unavailable")
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
+        self.to(self.device)
 
     def init_weights(self) -> None:
         initrange = 0.1
@@ -39,7 +45,7 @@ class TransformerModel(nn.Module):
         return output
     
     def get_non_zero_indexes(self, src, batch_size):
-        result = torch.zeros((batch_size, self.d_model), dtype=torch.int32)
+        result = torch.zeros((batch_size, self.d_model), dtype=torch.int32).to(self.device)
         for i in range(batch_size):
             non_zero = src[i].nonzero().squeeze()
             result[i,:len(non_zero)] = non_zero

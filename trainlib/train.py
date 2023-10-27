@@ -2,15 +2,20 @@ import numpy as np
 from IPython import display
 import matplotlib.pyplot as plt
 import torch
+from torch.nn.utils import clip_grad_norm_
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from time import time
 
 class Trainer:
     def __init__(self, model, epochs, criterion, optim, lr, stopping_batches,
-                 batch_logging_freq = None, use_cuda = True, metrics = {}):
+                 batch_logging_freq = None, metrics = {}, max_grad_norm=2., 
+                 grad_norm_type=2, lr_factor=0.2, lr_patience=10):
         self.model = model
         self.epochs = epochs
         self.criterion = criterion
         self.optim = optim(model.parameters(), lr)
+        self.lr_scheduler = ReduceLROnPlateau(self.optim, factor=lr_factor, 
+                                              patience=lr_patience,verbose=True)
         self.lr = lr
         self.stopping_batches = stopping_batches 
         self.training_loss = []
@@ -21,13 +26,8 @@ class Trainer:
         self.epochs_since_loss_record = 0
         self.batch_logging_freq = batch_logging_freq
         self.model_saved_batch = 0
-
-        if not torch.cuda.is_available():
-            print("Cuda unavailable")
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
-        self.model.to(self.device)
-
+        self.max_grad_norm = max_grad_norm
+        self.grad_norm_type = grad_norm_type
 
     def train(self, trainloader, validloader):
         if self.batch_logging_freq == None:
@@ -49,6 +49,7 @@ class Trainer:
 
                     n = epoch*k + i
                     stop, saved = self.early_stopping(epoch_valid_loss, n)
+                    self.lr_scheduler.step(epoch_valid_loss)
 
                     if n > 0:
                         # This line clears the display, all printing should go after this
@@ -56,6 +57,7 @@ class Trainer:
                     print(f"Epoch train loss: {epoch_train_loss}")
                     print(f"Epoch valid loss: {epoch_valid_loss}")
                     print(f"{self.batch_logging_freq} batches train time: {time() - t} s")
+                    print("Lr:", self.lr_scheduler._last_lr[0])
                     t = time()
 
                     if saved:
@@ -115,12 +117,13 @@ class Trainer:
         running_loss = 0.
         for _ in range(self.batch_logging_freq):
             x, y = next(trainiter)
-            x, y = x.to(self.device), y.to(self.device)
+            x, y = x.to(self.model.device), y.to(self.model.device)
             self.optim.zero_grad()
             out = self.model.forward(x.view(x.shape[0], -1))
             loss = self.criterion(out, y)
             running_loss += loss.item()
             loss.backward()
+            clip_grad_norm_(self.model.parameters(), self.max_grad_norm, norm_type=self.grad_norm_type)
             self.optim.step()
         return running_loss / self.batch_logging_freq
 
@@ -144,10 +147,10 @@ class Trainer:
 
         with torch.no_grad():
             for x, y in validloader:
-                x, y = x.to(self.device), y.to(self.device)
+                x, y = x.to(self.model.device), y.to(self.model.device)
                 out = self.model.forward(x.view(x.shape[0], -1))
                 loss = self.criterion(out, y)
                 epoch_valid_loss += loss.item()
                 for metric in self.metrics:
-                    self.metric_values[metric].append(self.metrics[metric](y.numpy(), out.numpy()))
+                    self.metric_values[metric].append(self.metrics[metric](y.cpu().numpy(), out.cpu().numpy()))
         return epoch_valid_loss / len(validloader)
