@@ -70,24 +70,27 @@ class Trainer:
             display.clear_output(wait=True)
             print("Training interrupted at epoch:", epoch)
             stop = True
-        finally:
-            if not stop:
-                display.clear_output(wait=True)
+        if not stop:
+            display.clear_output(wait=True)
 
-            # Retrieve best model weights
-            state_dict = torch.load('best.pth')
-            self.model.load_state_dict(state_dict)
+        # Retrieve best model weights
+        state_dict = torch.load('best.pth')
+        self.model.load_state_dict(state_dict)
 
-            plt.show()
-            print("Loaded best model weights!")
-            print(f"Total training time: {time() - t0} s")
-            print(f"Final train loss: {epoch_train_loss}")
-            print(f"Final valid loss: {epoch_valid_loss}")
+        plt.show()
+        print("Loaded best model weights!")
+        print(f"Total training time: {time() - t0} s")
+        print(f"Final train loss: {epoch_train_loss}")
+        print(f"Final valid loss: {epoch_valid_loss}")
 
     def plot_losses(self, epoch, n, k):
         t = np.arange(n+1) / k
         plt.close('all')
-        fig, (ax0, *axs) = plt.subplots(1, len(self.metrics)+1, figsize = (18, 6))
+        if len(self.metrics) > 0:
+            fig, (ax0, *axs) = plt.subplots(1, len(self.metrics)+1, figsize = (18, 6))
+        else:
+            fig, ax0 = plt.subplots(1, 1, figsize=(9,6))
+            axs = []
         ax0.set_title(f"Loss up to epoch: {epoch+1}/{self.epochs}")
         ax0.set_xlabel("Epoch")
         ax0.set_ylabel("Loss")
@@ -115,7 +118,7 @@ class Trainer:
             x, y = x.to(self.device), y.to(self.device)
             self.optim.zero_grad()
             out = self.model.forward(x.view(x.shape[0], -1))
-            loss = self.criterion(out, y.view(y.shape[0], -1))
+            loss = self.criterion(out, y)
             running_loss += loss.item()
             loss.backward()
             self.optim.step()
@@ -143,8 +146,8 @@ class Trainer:
             for x, y in validloader:
                 x, y = x.to(self.device), y.to(self.device)
                 out = self.model.forward(x.view(x.shape[0], -1))
-                loss = self.criterion(out, y.view(y.shape[0], -1))
+                loss = self.criterion(out, y)
                 epoch_valid_loss += loss.item()
                 for metric in self.metrics:
-                    self.metric_values[metric].append(self.metrics[metric](y, out))
+                    self.metric_values[metric].append(self.metrics[metric](y.numpy(), out.numpy()))
         return epoch_valid_loss / len(validloader)
