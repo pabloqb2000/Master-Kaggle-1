@@ -34,23 +34,28 @@ class TransformerModel(nn.Module):
         self.embedding.weight.data.uniform_(-initrange, initrange)
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
+    
+    def get_non_zero_indexes_n_weights(self, src, batch_size):
+        indexes = torch.zeros((batch_size, self.d_model), dtype=torch.int32).to(self.device)
+        weights = torch.zeros((batch_size, self.d_model), dtype=torch.float32).to(self.device)
+        for i in range(batch_size):
+            non_zero = src[i].nonzero().squeeze()
+            indexes[i, :len(non_zero)] = non_zero
+            indexes[i,  len(non_zero)] = 2001 # <EOS> token
+            weights[i, :len(non_zero)] = src[i, non_zero]
+            weights[i,  len(non_zero)] = 1.
+        weights = weights.unsqueeze(-1)
+        return indexes, weights
 
     def forward(self, src, src_mask = None):
         batch_size = src.shape[0]
-        src = self.embedding(self.get_non_zero_indexes(src, batch_size)) * sqrt(self.d_model)
+        indexes, weights = self.get_non_zero_indexes_n_weights(src, batch_size)
+        src = weights * self.embedding(indexes) * sqrt(self.d_model)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, src_mask)
         output = torch.mean(output, axis=1)
         output = self.linear(output)
         return output
-    
-    def get_non_zero_indexes(self, src, batch_size):
-        result = torch.zeros((batch_size, self.d_model), dtype=torch.int32).to(self.device)
-        for i in range(batch_size):
-            non_zero = src[i].nonzero().squeeze()
-            result[i,:len(non_zero)] = non_zero
-            result[i,len(non_zero)] = 2001 # <EOS> token
-        return result
     
 class DNN(nn.Module):
     def __init__(self, dims, dropout):
