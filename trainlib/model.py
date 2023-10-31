@@ -41,8 +41,10 @@ class TransformerModel(nn.Module):
         for i in range(batch_size):
             non_zero = src[i].nonzero().squeeze()
             indexes[i, :len(non_zero)] = non_zero
-            indexes[i,  len(non_zero)] = 2001 # <EOS> token
-            weights[i, :len(non_zero)] = src[i, non_zero]
+            indexes[i,  len(non_zero)] = 2001 # <EOS> token            
+            us = torch.log(src[i,non_zero])
+            mean = torch.mean(us)
+            weights[i, :len(non_zero)] = (us - mean)/((1 - mean)*2) + 1
             weights[i,  len(non_zero)] = 1.
         weights = weights.unsqueeze(-1)
         return indexes, weights

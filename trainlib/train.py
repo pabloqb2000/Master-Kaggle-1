@@ -152,5 +152,7 @@ class Trainer:
                 loss = self.criterion(out, y)
                 epoch_valid_loss += loss.item()
                 for metric in self.metrics:
-                    self.metric_values[metric].append(self.metrics[metric](y.cpu().numpy(), out.cpu().numpy()))
+                    v = self.metrics[metric](y.cpu().numpy(), out.cpu().numpy())
+                    self.metric_values[metric].append(v)
+                    print(metric+":", v)
         return epoch_valid_loss / len(validloader)
